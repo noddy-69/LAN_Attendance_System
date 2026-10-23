@@ -1,0 +1,79 @@
+SOFTWARE LICENSE AGREEMENT  (TEMPLATE)
+=======================================
+
+IMPORTANT — THIS IS A STARTING TEMPLATE, NOT LEGAL ADVICE. Have a lawyer review
+and adapt it (especially the governing-law, liability, and fee sections) before
+using it commercially. Fill in the bracketed [ ] placeholders.
+
+This Software License Agreement ("Agreement") is between [YOUR COMPANY NAME]
+("Licensor") and the customer organisation identified in the issued license
+("Licensee"). By installing or using the Attendance & Workforce Management
+System ("Software"), the Licensee agrees to these terms.
+
+1. LICENSE GRANT
+   Licensor grants the Licensee a non-exclusive, non-transferable, time-limited
+   license to install and run ONE instance of the Software on the Licensee's own
+   computer(s) at the Licensee's premises, for the Licensee's internal business
+   use only, for up to the number of employees stated in the issued license key,
+   for the license term stated therein.
+
+2. RESTRICTIONS  (the Licensee shall NOT)
+   a. copy, distribute, sublicense, rent, lease, resell, or make the Software
+      available to any third party;
+   b. reverse-engineer, decompile, disassemble, or attempt to derive the source
+      code, except to the limited extent such restriction is prohibited by law;
+   c. remove, disable, or circumvent the license-key check, employee limit, or
+      any technical protection;
+   d. modify, adapt, or create derivative works of the Software;
+   e. use the Software to build a competing product or service.
+
+3. OWNERSHIP
+   The Software, including all intellectual property in it, remains the exclusive
+   property of the Licensor. This Agreement grants a license, not a sale of the
+   Software. No rights are granted except as expressly stated here.
+
+4. CUSTOMER DATA
+   All data the Licensee enters or generates (employees, attendance, photos,
+   reports) belongs to the Licensee and is stored on the Licensee's own systems.
+   The Licensor does not host, access, or process the Licensee's data. The
+   Licensee is responsible for its own backups and for compliance with applicable
+   data-protection and biometric-privacy laws (including obtaining any required
+   employee consent for facial recognition).
+
+5. LICENSE TERM, FEES & RENEWAL
+   The license is valid for the period encoded in the license key. Fees are as
+   per the separate order/quotation. On expiry the Software restricts operation
+   until a renewed license key is provided. Licensor may issue updated license
+   keys upon renewal.
+
+6. SUPPORT & UPDATES
+   Support and software updates are provided per the separate support plan, if
+   any. Licensor is not obligated to provide updates unless agreed in writing.
+
+7. TERMINATION
+   This license terminates automatically on expiry, or if the Licensee breaches
+   any term. On termination the Licensee must stop using and uninstall the
+   Software. Sections 2, 3, 8, and 9 survive termination.
+
+8. WARRANTY DISCLAIMER
+   THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND
+   NON-INFRINGEMENT. The Licensor does not warrant uninterrupted or error-free
+   operation, or any particular accuracy of facial recognition.
+
+9. LIMITATION OF LIABILITY
+   To the maximum extent permitted by law, the Licensor's total liability under
+   this Agreement shall not exceed the fees paid by the Licensee in the twelve
+   (12) months preceding the claim. The Licensor shall not be liable for indirect,
+   incidental, special, or consequential damages, or for loss of data, profits,
+   or business.
+
+10. GOVERNING LAW
+    This Agreement is governed by the laws of [YOUR STATE/COUNTRY], and disputes
+    shall be subject to the courts of [YOUR JURISDICTION].
+
+By installing or using the Software, the Licensee acknowledges that it has read,
+understood, and agrees to be bound by this Agreement.
+
+[YOUR COMPANY NAME]
+[Address] · [Email] · [Date]

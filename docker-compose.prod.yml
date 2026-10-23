@@ -1,0 +1,328 @@
+# ════════════════════════════════════════════════════════════════════════════
+# PRODUCTION compose — runs from pre-built images only (no source, no build).
+# This is what ships to a customer office. The installer loads the images from
+# the bundled tarball, then runs:  docker compose -f docker-compose.prod.yml up -d
+#
+# Differences from docker-compose.yml (dev):
+#   • every app service uses image: (no build context — source is never shipped)
+#   • SEED_DEMO_ACCOUNTS defaults to false (no demo logins in production)
+# Everything else (env, healthchecks, limits, volumes) matches dev.
+# ════════════════════════════════════════════════════════════════════════════
+services:
+
+  nginx:
+    image: nginx:1.25-alpine
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d/${DEPLOYMENT_MODE:-local}.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/ >/dev/null 2>&1; exit 0"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+
+  # ── mediamtx: media server for the in-app webcam (Admin → Camera) ───────────
+  # The browser publishes its webcam via WHIP (WebRTC); mediamtx republishes it as
+  # rtsp://mediamtx:8554/webcam, which the face-recognition service reads. WebRTC media
+  # needs the host LAN IP advertised (HOST_LAN_IP, filled by gen-env) + the UDP mux port
+  # published so the browser can reach it.
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    environment:
+      MEDIAMTX_WEBRTCADDITIONALHOSTS: ${HOST_LAN_IP:-}
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+    expose:
+      - "8554"
+      - "8889"
+    ports:
+      - "8189:8189/udp"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+
+  frontend:
+    image: attendance-frontend:${IMAGE_TAG:-1.0.0}
+    expose:
+      - "3000"
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  backend:
+    image: attendance-backend:${IMAGE_TAG:-1.0.0}
+    expose:
+      - "8000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      SECRET_KEY: ${SECRET_KEY}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET_ATTENDANCE: ${MINIO_BUCKET_ATTENDANCE:-attendance-proofs}
+      MINIO_SECURE: ${MINIO_SECURE:-false}
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_TEMPLATE: ${WHATSAPP_TEMPLATE:-}
+      WHATSAPP_LANGUAGE: ${WHATSAPP_LANGUAGE:-en_US}
+      WHATSAPP_API_VERSION: ${WHATSAPP_API_VERSION:-v21.0}
+      SMTP_HOST: ${SMTP_HOST:-localhost}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-noreply@attendance.local}
+      SMTP_TLS: ${SMTP_TLS:-true}
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-local}
+      BASE_URL: ${BASE_URL:-http://localhost}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-15}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      BIOMETRIC_CHECKIN_STATE: ${BIOMETRIC_CHECKIN_STATE:-0}
+      BIOMETRIC_REQUIRE_REGISTERED_DEVICE: ${BIOMETRIC_REQUIRE_REGISTERED_DEVICE:-false}
+      DEFAULT_ALLOWED_LATE_COUNT: ${DEFAULT_ALLOWED_LATE_COUNT:-3}
+      DEFAULT_LATE_PENALTY_PAISE: ${DEFAULT_LATE_PENALTY_PAISE:-20000}
+      SERVICE_ACCOUNT_EMAIL: ${SERVICE_ACCOUNT_EMAIL:-face-service@attendance.app}
+      SERVICE_ACCOUNT_PASSWORD: ${SERVICE_ACCOUNT_PASSWORD:-FaceService@1234}
+      AUTO_INIT: ${AUTO_INIT:-true}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@test.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@1234}
+      # Production: no demo accounts by default.
+      SEED_DEMO_ACCOUNTS: ${SEED_DEMO_ACCOUNTS:-false}
+      # Software license — REQUIRED in production. The vendor sets LICENSE_KEY
+      # (from vendor/make_license.py) per customer. Enforcement is ON.
+      LICENSE_KEY: ${LICENSE_KEY:-}
+      LICENSE_ENFORCE: ${LICENSE_ENFORCE:-true}
+    volumes:
+      # Database backups (Admin → Settings → Data + monthly auto-backup). Persisted on
+      # the host so they can be copied off-machine.
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  face-recognition:
+    image: attendance-face:${IMAGE_TAG:-1.0.0}
+    expose:
+      - "8001"
+    environment:
+      BACKEND_URL: http://backend:8000
+      FACE_SERVICE_KEY: ${SECRET_KEY}
+      SERVICE_ACCOUNT_EMAIL: ${SERVICE_ACCOUNT_EMAIL:-face-service@attendance.app}
+      SERVICE_ACCOUNT_PASSWORD: ${SERVICE_ACCOUNT_PASSWORD:-FaceService@1234}
+      BRANCH_ID: ${FACE_BRANCH_ID:-}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET_ATTENDANCE:-attendance-proofs}
+      MINIO_SECURE: ${MINIO_SECURE:-false}
+      ENTRY_CAMERA_URL: ${ENTRY_CAMERA_URL:-}
+      EXIT_CAMERA_URL: ${EXIT_CAMERA_URL:-}
+      ENTRY_CAMERA_DEVICE_ID: ${ENTRY_CAMERA_DEVICE_ID:-}
+      EXIT_CAMERA_DEVICE_ID: ${EXIT_CAMERA_DEVICE_ID:-}
+      FACE_CONFIDENCE_THRESHOLD: ${FACE_CONFIDENCE_THRESHOLD:-0.40}
+      FACE_COOLDOWN_SECONDS: ${FACE_COOLDOWN_SECONDS:-300}
+      FRAME_SKIP: ${FRAME_SKIP:-3}
+      FACE_ANTISPOOF_ENABLED: ${FACE_ANTISPOOF_ENABLED:-false}
+      # Min "real" score to accept IF the layer is enabled (low = lenient).
+      FACE_ANTISPOOF_THRESHOLD: ${FACE_ANTISPOOF_THRESHOLD:-0.2}
+      FACE_ANTISPOOF_MODEL_DIR: /opt/insightface/antispoof
+      # Passive MiniFASNet liveness on the selfie path is OFF by default: the bundled
+      # models misclassify genuine phone selfies (a live face scored ~0.02 "real" in
+      # testing). Active head-movement liveness + the 1:1 self-match guard buddy-punching.
+      # Enable per-site (SELFIE_ANTISPOOF_ENABLED=true) only after validating on your cameras.
+      SELFIE_ANTISPOOF_ENABLED: ${SELFIE_ANTISPOOF_ENABLED:-false}
+    volumes:
+      # MiniFASNet ONNX model(s) for passive selfie liveness. Populate with
+      # setup-antispoof; empty = fails open (active head-movement liveness applies).
+      - ./models/antispoof:/opt/insightface/antispoof:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
+
+  postgres:
+    image: postgres:16-alpine
+    expose:
+      - "5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-attendance}
+      POSTGRES_USER: ${POSTGRES_USER:-attendance_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 1024m
+
+  redis:
+    image: redis:7-alpine
+    expose:
+      - "6379"
+    command:
+      - redis-server
+      - --maxmemory
+      - 100mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - "900"
+      - "1"
+      - --save
+      - "300"
+      - "10"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+
+  celery-worker:
+    image: attendance-backend:${IMAGE_TAG:-1.0.0}
+    command: >
+      celery -A app.tasks.celery_app worker
+        --beat
+        --loglevel=info
+        --concurrency=2
+        --hostname=worker@%h
+        --schedule=/tmp/celerybeat-schedule
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      SECRET_KEY: ${SECRET_KEY}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET_ATTENDANCE: ${MINIO_BUCKET_ATTENDANCE:-attendance-proofs}
+      MINIO_SECURE: ${MINIO_SECURE:-false}
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_TEMPLATE: ${WHATSAPP_TEMPLATE:-}
+      WHATSAPP_LANGUAGE: ${WHATSAPP_LANGUAGE:-en_US}
+      WHATSAPP_API_VERSION: ${WHATSAPP_API_VERSION:-v21.0}
+      SMTP_HOST: ${SMTP_HOST:-localhost}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-noreply@attendance.local}
+      SMTP_TLS: ${SMTP_TLS:-true}
+      BASE_URL: ${BASE_URL:-http://localhost}
+      DEFAULT_ALLOWED_LATE_COUNT: ${DEFAULT_ALLOWED_LATE_COUNT:-3}
+      DEFAULT_LATE_PENALTY_PAISE: ${DEFAULT_LATE_PENALTY_PAISE:-20000}
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.tasks.celery_app inspect ping --destination worker@$$HOSTNAME --timeout 5"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  minio:
+    image: minio/minio:latest
+    expose:
+      - "9000"
+    ports:
+      - "9001:9001"
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:

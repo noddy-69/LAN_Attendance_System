@@ -1,0 +1,7 @@
+# Minimal mediamtx config for the webcam demo.
+# Defines the "webcam" path so ffmpeg can publish to rtsp://localhost:8554/webcam,
+# and a catch-all so any other path also works. All other settings (RTSP on
+# port 8554, etc.) use mediamtx defaults.
+paths:
+  webcam:
+  all_others:
